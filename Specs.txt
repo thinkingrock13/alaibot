@@ -1,0 +1,4 @@
+Database = Supabase
+AI model = OpenAI's gpt-3.5-turbo
+
+Original database created in sqlite3. Then, it was converted into a cloud database in Supabase for access by OpenAI.
