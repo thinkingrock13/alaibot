@@ -1,0 +1,8 @@
+Id,Chemical,Dose_Amount,Dose_Unit,Scheduled_Time,Actual_Time,Notes,Purpose,Typical_Units,Description
+1,Coagulant,15.5,mg/L,2025-06-07 00:00:00+00,,Start of day dosing,Helps particles clump together,"mg/L, g/L",Used to aggregate suspended particles into larger flocs that settle out in sedimentation tanks.
+2,Chlorine,2.0,mg/L,2025-06-07 04:00:00+00,,Early morning disinfection,Disinfection,mg/L,A strong oxidizer used to kill bacteria and viruses in water to ensure safety.
+3,pH Adjuster,0.5,L,2025-06-07 08:30:00+00,,Morning pH adjustment,Adjusts pH (acid or base),"mg/L, L, mL",Chemicals like sodium hydroxide (base) or sulfuric acid (acid) to correct water pH levels.
+4,Coagulant,16.0,mg/L,2025-06-07 13:00:00+00,,Midday booster dose,Helps particles clump together,"mg/L, g/L",Used to aggregate suspended particles into larger flocs that settle out in sedimentation tanks.
+5,Chlorine,2.2,mg/L,2025-06-07 17:30:00+00,,Late afternoon disinfection,Disinfection,mg/L,A strong oxidizer used to kill bacteria and viruses in water to ensure safety.
+6,pH Adjuster,0.6,L,2025-06-07 21:00:00+00,,Evening pH correction,Adjusts pH (acid or base),"mg/L, L, mL",Chemicals like sodium hydroxide (base) or sulfuric acid (acid) to correct water pH levels.
+7,Chlorine,2.1,mg/L,2025-06-08 00:45:00+00,,Early next-day dose,Disinfection,mg/L,A strong oxidizer used to kill bacteria and viruses in water to ensure safety.
