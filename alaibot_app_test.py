@@ -1,6 +1,3 @@
-#cd C:\Users\psacs\AppData\Local\Programs\Python\Python39\Scripts
-#streamlit run "C:/Users/psacs/Desktop/Subiksha/AlaiBot/alaibot/alaibot_app - Copy.py"
-
 import streamlit as st
 import openai
 import os
@@ -42,7 +39,6 @@ div[data-baseweb="radio"] > div:hover { background-color: #b3e5fc; transition: 0
 .stDownloadButton button { background-color: #0288d1; color: white; border-radius: 10px; font-weight: bold; }
 </style>""", unsafe_allow_html=True)
 
-@st.cache_data
 def load_water_data():
     response = supabase.table("water_readings").select("*").execute()
     df = pd.DataFrame(response.data)
@@ -52,9 +48,17 @@ def load_water_data():
         df = df.sort_values('Timestamp')
     return df
 
-water_df = load_water_data()
+def load_dose_schedule():
+    response = supabase.table("chemical_dosing").select("*").execute()
+    df = pd.DataFrame(response.data)
+    if not df.empty:
+        df['Scheduled_Time'] = pd.to_datetime(df['Scheduled_Time'])
+        df['Actual_Time'] = pd.to_datetime(df['Actual_Time'], errors='coerce')
+    return df
 
-# Helpers
+water_df = load_water_data()
+dose_df = load_dose_schedule()
+
 def wants_graph(text):
     keywords = ['trend', 'show', 'graph', 'readings', 'plot', 'visual']
     return any(k in text.lower() for k in keywords)
@@ -75,69 +79,29 @@ def extract_query_entities(text):
         'flow rate': 'Flow_Rate',
         'flowrate': 'Flow_Rate',
         'coagulant': 'Coagulant_Dosing',
-        'dosing': 'Coagulant_Dosing'
+        'dosing': 'Coagulant_Dosing',
+        'chemical': 'Chemical',
+        'dose': 'Chemical'
     }
     detected = []
-    for word in text.lower().split():
-        match = difflib.get_close_matches(word, param_aliases.keys(), n=1, cutoff=0.8)
-        if match:
-            detected.append(param_aliases[match[0]])
+    lowered_text = text.lower()
+
+    for phrase in param_aliases:
+        if phrase in lowered_text:
+            detected.append(param_aliases[phrase])
 
     time_filter = None
-    if "yesterday" in text.lower():
+    if "yesterday" in lowered_text:
         time_filter = datetime.now() - timedelta(days=1)
-    elif "last 24" in text.lower():
+    elif "last 24" in lowered_text:
         time_filter = datetime.now() - timedelta(hours=24)
-    elif "week" in text.lower():
+    elif "week" in lowered_text:
         time_filter = datetime.now() - timedelta(days=7)
-
+   
     return list(set(detected)), time_filter
 
-#For chemical dosing
-@st.cache_data(ttl=300)
-def fetch_chemical_dosing():
-    response = supabase.table("chemical_dosing").select("*").execute()
-    data = response.data
-    return pd.DataFrame(data) if data else pd.DataFrame()
-
-def format_time(time_str):
-    if time_str:
-        return datetime.fromisoformat(time_str.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M")
-    return "Not recorded"
-
-def show_chemical_dosing_module():
-    st.header("🧪 Chemical Dosing Overview")
-    df = fetch_chemical_dosing()
-    if df.empty:
-        st.warning("No data found in 'chemical_dosing'.")
-        return
-    df['Scheduled_Time'] = pd.to_datetime(df['Scheduled_Time'])
-    df['Actual_Time'] = pd.to_datetime(df['Actual_Time'], errors='coerce')
-    df['Time_Diff_Minutes'] = (df['Actual_Time'] - df['Scheduled_Time']).dt.total_seconds() / 60
-    st.subheader("📋 Dosing Records")
-    st.dataframe(df[['Chemical','Dose_Amount','Dose_Unit','Scheduled_Time','Actual_Time','Notes','Purpose','Time_Diff_Minutes']].sort_values('Scheduled_Time'))
-    st.subheader("⚠️ Missed or Delayed Doses")
-    missed = df[df['Actual_Time'].isnull()]
-    delayed = df[df['Time_Diff_Minutes'] > 30]
-    if missed.empty and delayed.empty:
-        st.success("✅ All doses are on schedule!")
-    else:
-        if not missed.empty:
-            st.warning("❌ Missed Doses:")
-            st.dataframe(missed[['Chemical','Scheduled_Time','Notes']])
-        if not delayed.empty:
-            st.warning("⏱️ Delayed Doses (>30 min):")
-            st.dataframe(delayed[['Chemical','Scheduled_Time','Actual_Time','Time_Diff_Minutes']])
-    st.subheader("🗓️ Upcoming Scheduled Doses")
-    upcoming = df[df['Scheduled_Time'] > datetime.utcnow()].sort_values('Scheduled_Time').head(5)
-    if not upcoming.empty:
-        for _, row in upcoming.iterrows():
-            st.info(f"🧪 **{row['Chemical']}** at **{format_time(str(row['Scheduled_Time']))}** – {row['Purpose']}")
-    else:
-        st.info("No upcoming doses found.")
-      
 # Sidebar
-menu = st.sidebar.radio("Navigate", ["Chatbot", "Anomaly Dashboard", "Chemical Dosing"])
+menu = st.sidebar.radio("Navigate", ["Chatbot", "Anomaly Dashboard"])
 
 if menu == "Chatbot":
     st.title("Alaibot - Water Treatment Chatbot")
@@ -148,25 +112,12 @@ if menu == "Chatbot":
     user_input = st.chat_input("You")
 
     if user_input:
+        params = []
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         params, since = extract_query_entities(user_input)
         bot_reply = ""
 
-        if "cause" in user_input.lower() and "anomal" in user_input.lower() and params:
-            param = params[0]
-            anomalies = water_df[water_df['Anomaly_Status'].str.contains(param, case=False, na=False)]
-            if since:
-                anomalies = anomalies[anomalies['Timestamp'] >= since]
-            if anomalies.empty:
-                bot_reply = f"No {param} anomalies found."
-            else:
-                bot_reply = f"Found {len(anomalies)} {param} anomalies. Potential correlations:\n"
-                for op in ['pH', 'Turbidity', 'Temperature', 'Chlorine', 'Flow_Rate', 'Coagulant_Dosing']:
-                    if op != param:
-                        corr = compute_correlation(anomalies, param, op)
-                        bot_reply += f"- {param} vs {op}: correlation = {corr}\n"
-
-        elif "affect" in user_input.lower() and len(params) == 2:
+        if ("affect" in user_input.lower() or "correlat" in user_input.lower()) and len(params) == 2:
             p1, p2 = params[0], params[1]
             corr = compute_correlation(water_df, p1, p2)
             bot_reply = f"The correlation between {p1} and {p2} is approximately {corr}."
@@ -182,42 +133,68 @@ if menu == "Chatbot":
             anomaly_rows = water_df[water_df['Anomaly_Status'].str.lower() != 'normal']
             if since:
                 anomaly_rows = anomaly_rows[anomaly_rows['Timestamp'] >= since]
-            if params:
-                param = params[0]
-                anomaly_rows = anomaly_rows[anomaly_rows['Anomaly_Status'].str.contains(param, case=False, na=False)]
+            if "all anomal" in user_input.lower():
+                params = ['pH', 'Turbidity', 'Temperature', 'Chlorine', 'Flow_Rate', 'Coagulant_Dosing']
 
-            if anomaly_rows.empty:
-                bot_reply = "No anomalies detected for that parameter or timeframe."
-            else:
-                bot_reply = f"Found {len(anomaly_rows)} anomalies"
-                if params:
-                    bot_reply += f" in {param}"
-                if since:
-                    bot_reply += f" since {since.strftime('%Y-%m-%d %H:%M')}"
-                bot_reply += ":\n\n"
+            replies = []
+            for param in params:
+                filtered = anomaly_rows[anomaly_rows['Anomaly_Status'].str.contains(param, case=False, na=False)]
 
-                for _, row in anomaly_rows.iterrows():
-                    if param in row and pd.notna(row[param]):
-                        time_str = row['Timestamp'].strftime('%Y-%m-%d %H:%M')
-                        value = round(row[param], 2)
-                        bot_reply += f"- {value} at {time_str}\n"
+                if filtered.empty:
+                    replies.append(f"No anomalies detected for {param}.")
+                else:
+                    msg = f"Found {len(filtered)} anomalies in {param}"
+                    if since:
+                        msg += f" since {since.strftime('%Y-%m-%d %H:%M')}"
+                    msg += ":\n\n"
 
-                if params and wants_graph(user_input):
-                    st.line_chart(anomaly_rows.set_index('Timestamp')[param])
+                    for _, row in filtered.iterrows():
+                        if param in row and pd.notna(row[param]):
+                            time_str = row['Timestamp'].strftime('%Y-%m-%d %H:%M')
+                            value = round(row[param], 2)
+                            msg += f"- {value} at {time_str}\n"
 
-        elif params and wants_graph(user_input):
-            param = params[0]
-            plot_df = water_df.copy()
+                    replies.append(msg)
+
+                    if wants_graph(user_input):
+                        plot_df = water_df.copy()
+                        if since:
+                            plot_df = plot_df[plot_df['Timestamp'] >= since]
+
+                        fig, ax = plt.subplots(figsize=(8, 3))
+                        ax.plot(plot_df['Timestamp'], plot_df[param], color='#0288d1')
+                        ax.set_title(f"{param} Over Time")
+                        ax.set_xlabel("Time")
+                        ax.set_ylabel(param)
+                        ax.grid(True)
+                        st.pyplot(fig)
+                        st.line_chart(filtered.set_index('Timestamp')[param])
+
+            bot_reply = "\n\n".join(replies)
+
+        elif "dose" in user_input.lower() or "chemical" in user_input.lower():
+            chem_keywords = ["chlorine", "coagulant", "ph", "pH adjuster"]
+            chemical_mentioned = [chem for chem in chem_keywords if chem.lower() in user_input.lower()]
+            chem_df = dose_df.copy()
+
             if since:
-                plot_df = plot_df[plot_df['Timestamp'] >= since]
-            bot_reply = f"Here’s the trend for {param}:"
-            fig, ax = plt.subplots(figsize=(8, 3))
-            ax.plot(plot_df['Timestamp'], plot_df[param], color='#0288d1')
-            ax.set_title(f"{param} Over Time")
-            ax.set_xlabel("Time")
-            ax.set_ylabel(param)
-            ax.grid(True)
-            st.pyplot(fig)
+                chem_df = chem_df[chem_df['Scheduled_Time'] >= since]
+
+            if chemical_mentioned:
+                chem_df = chem_df[chem_df['Chemical'].str.lower().isin([c.lower() for c in chemical_mentioned])]
+
+            if chem_df.empty:
+                bot_reply = "No chemical dosing records found for your query."
+            else:
+                reply_lines = []
+                for _, row in chem_df.iterrows():
+                    chem = row['Chemical']
+                    amt = row['Dose_Amount']
+                    unit = row['Dose_Unit']
+                    sched_time = row['Scheduled_Time'].strftime('%Y-%m-%d %H:%M')
+                    note = row['Notes'] or ""
+                    reply_lines.append(f"- {chem}: {amt} {unit} at {sched_time} — {note}")
+                bot_reply = "\n".join(reply_lines)
 
         else:
             try:
@@ -270,10 +247,3 @@ elif menu == "Anomaly Dashboard":
         st.pyplot(fig)
 
     st.download_button("Download CSV", display_df.to_csv(index=False), "anomaly_data.csv", "text/csv")
-
-# --- Chemical Dosing Module ---
-
-elif menu == "Chemical Dosing":
-    show_chemical_dosing_module()
-
-
