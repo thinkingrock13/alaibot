@@ -48,16 +48,7 @@ def load_water_data():
         df = df.sort_values('Timestamp')
     return df
 
-def load_dose_schedule():
-    response = supabase.table("chemical_dosing").select("*").execute()
-    df = pd.DataFrame(response.data)
-    if not df.empty:
-        df['Scheduled_Time'] = pd.to_datetime(df['Scheduled_Time'])
-        df['Actual_Time'] = pd.to_datetime(df['Actual_Time'], errors='coerce')
-    return df
-
 water_df = load_water_data()
-dose_df = load_dose_schedule()
 
 def wants_graph(text):
     keywords = ['trend', 'show', 'graph', 'readings', 'plot', 'visual']
@@ -79,9 +70,7 @@ def extract_query_entities(text):
         'flow rate': 'Flow_Rate',
         'flowrate': 'Flow_Rate',
         'coagulant': 'Coagulant_Dosing',
-        'dosing': 'Coagulant_Dosing',
-        'chemical': 'Chemical',
-        'dose': 'Chemical'
+        'dosing': 'Coagulant_Dosing'
     }
     detected = []
     lowered_text = text.lower()
@@ -171,30 +160,6 @@ if menu == "Chatbot":
                         st.line_chart(filtered.set_index('Timestamp')[param])
 
             bot_reply = "\n\n".join(replies)
-
-        elif "dose" in user_input.lower() or "chemical" in user_input.lower():
-            chem_keywords = ["chlorine", "coagulant", "ph", "pH adjuster"]
-            chemical_mentioned = [chem for chem in chem_keywords if chem.lower() in user_input.lower()]
-            chem_df = dose_df.copy()
-
-            if since:
-                chem_df = chem_df[chem_df['Scheduled_Time'] >= since]
-
-            if chemical_mentioned:
-                chem_df = chem_df[chem_df['Chemical'].str.lower().isin([c.lower() for c in chemical_mentioned])]
-
-            if chem_df.empty:
-                bot_reply = "No chemical dosing records found for your query."
-            else:
-                reply_lines = []
-                for _, row in chem_df.iterrows():
-                    chem = row['Chemical']
-                    amt = row['Dose_Amount']
-                    unit = row['Dose_Unit']
-                    sched_time = row['Scheduled_Time'].strftime('%Y-%m-%d %H:%M')
-                    note = row['Notes'] or ""
-                    reply_lines.append(f"- {chem}: {amt} {unit} at {sched_time} — {note}")
-                bot_reply = "\n".join(reply_lines)
 
         else:
             try:

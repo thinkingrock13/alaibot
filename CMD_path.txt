@@ -1,0 +1,1 @@
+C:\Users\Subiksha C\AppData\Local\Programs\Python\Python314\Scripts>py -m streamlit run "C:\Users\Subiksha C\Desktop\Subiksha\AlaiBot\alaibot\alaibot_app_test.py"
